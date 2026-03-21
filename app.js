@@ -1,8 +1,8 @@
 /**
  * app.js — SnapBooth FINAL
  * Fitur: filter, stiker, multi-shot, blitz, kamera 0.5x
- *        + ImgBB upload + QR permanen
- *        + Pilih layout: Grid 2x2 atau Vertikal
+ * + ImgBB upload + QR permanen
+ * + Pilih layout: Grid 2x2 atau Vertikal
  */
 
 const IMGBB_API_KEY = '6947b43c605be95646f5101da2a2ede4';
@@ -131,7 +131,6 @@ function switchCamera(btn) {
    EVENT LISTENERS
    ============================================================ */
 function registerEvents() {
-
   // Shot count
   el.shotRow.addEventListener('click', e => {
     const btn = e.target.closest('[data-shots]');
@@ -231,6 +230,7 @@ function addLiveSticker(emoji, tx, ty) {
   div.style.left = tx + '%'; div.style.top = ty + '%';
   el.stickerOvl.appendChild(div);
 }
+
 function removeLiveSticker(emoji) {
   document.getElementById('live-' + encodeURIComponent(emoji))?.remove();
 }
@@ -288,6 +288,7 @@ function captureFrame() {
   wc.width = W; wc.height = H;
   const ctx = wc.getContext('2d');
   ctx.save();
+  
   if (state.zoomLevel === 0.5) {
     const scale = 0.6;
     const ox = (W - W * scale) / 2;
