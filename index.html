@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SnapBooth 📸</title>
+
+  <!-- SEO & PWA -->
+  <meta name="description" content="Photo booth seru langsung dari browser!" />
+  <meta name="theme-color" content="#0d0d0d" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="SnapBooth" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+  <!-- Open Graph (preview WhatsApp/sosmed) -->
+  <meta property="og:title"       content="SnapBooth 📸" />
+  <meta property="og:description" content="Photo booth seru langsung dari browser!" />
+  <meta property="og:image"       content="logo.png" />
+  <meta property="og:type"        content="website" />
+
+  <!-- Favicon & homescreen icon -->
+  <link rel="icon"             type="image/png" href="logo.png" />
+  <link rel="apple-touch-icon"                  href="logo.png" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- CSS -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- QR Code library -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body>
+
+  <div class="grain" aria-hidden="true"></div>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="logo">Snap<span>Booth</span> 📸</div>
+    <div class="header-right">
+      <span class="badge">FREE</span>
+    </div>
+  </header>
+
+  <main class="app">
+
+    <!-- ══ KOLOM KIRI ══ -->
+    <section class="camera-panel">
+
+      <!-- VIEWFINDER -->
+      <div class="viewfinder" id="viewfinder">
+        <video id="video" autoplay playsinline></video>
+        <div id="sticker-overlay" class="sticker-overlay" aria-hidden="true"></div>
+        <div class="vf-corner tl"></div>
+        <div class="vf-corner tr"></div>
+        <div class="vf-corner bl"></div>
+        <div class="vf-corner br"></div>
+        <div id="shot-dots"    class="shot-dots"></div>
+        <div id="filter-label" class="filter-label">NORMAL</div>
+        <div id="zoom-label"   class="zoom-label">1×</div>
+        <div id="countdown"    class="countdown">3</div>
+        <div id="blitz"        class="blitz"></div>
+        <div id="no-cam" class="no-cam show">
+          <div class="no-cam-icon">📷</div>
+          <p>Izinkan akses kamera untuk<br>memulai sesi foto</p>
+          <button class="btn-start-cam" onclick="startCamera()">Aktifkan Kamera</button>
+        </div>
+      </div>
+
+      <!-- KONTROL -->
+      <div class="controls">
+
+        <!-- Jumlah Foto -->
+        <div class="ctrl-group">
+          <div class="ctrl-label">Jumlah Foto</div>
+          <div class="pill-row" id="shot-row">
+            <button class="pill active" data-shots="1">1 Foto</button>
+            <button class="pill"        data-shots="2">2 Foto</button>
+            <button class="pill"        data-shots="3">3 Foto</button>
+            <button class="pill"        data-shots="4">4 Foto</button>
+          </div>
+        </div>
+
+        <!-- Kamera & Zoom -->
+        <div class="ctrl-group">
+          <div class="ctrl-label">Kamera</div>
+          <div class="pill-row">
+            <button class="pill active" data-cam="user"        data-zoom="1"   onclick="switchCamera(this)">🤳 Depan</button>
+            <button class="pill"        data-cam="environment" data-zoom="1"   onclick="switchCamera(this)">📷 Belakang</button>
+            <button class="pill"        data-cam="environment" data-zoom="0.5" onclick="switchCamera(this)">🔭 0.5×</button>
+          </div>
+        </div>
+
+        <!-- Filter -->
+        <div class="ctrl-group">
+          <div class="ctrl-label">Filter</div>
+          <div class="pill-row" id="filter-row">
+            <button class="pill active" data-filter="" data-label="Normal">✦ Normal</button>
+            <button class="pill" data-filter="grayscale(100%)"                         data-label="B&W">◑ B&W</button>
+            <button class="pill" data-filter="sepia(80%)"                              data-label="Sepia">☕ Sepia</button>
+            <button class="pill" data-filter="saturate(200%) contrast(110%)"           data-label="Vivid">⚡ Vivid</button>
+            <button class="pill" data-filter="hue-rotate(180deg) saturate(130%)"       data-label="Cool">❄ Cool</button>
+            <button class="pill" data-filter="sepia(30%) saturate(150%) brightness(105%)" data-label="Warm">🔥 Warm</button>
+            <button class="pill" data-filter="grayscale(100%) contrast(145%) brightness(75%)" data-label="Noir">🎬 Noir</button>
+            <button class="pill" data-filter="brightness(115%) saturate(70%)"          data-label="Dreamy">✨ Dreamy</button>
+          </div>
+        </div>
+
+        <!-- Stiker -->
+        <div class="ctrl-group">
+          <div class="ctrl-label">Stiker <span class="ctrl-hint">(maks. 4)</span></div>
+          <div class="sticker-grid" id="sticker-row">
+            <button class="stk-btn" data-s="⭐" data-tx="10" data-ty="12">⭐</button>
+            <button class="stk-btn" data-s="🌸" data-tx="80" data-ty="12">🌸</button>
+            <button class="stk-btn" data-s="🎉" data-tx="10" data-ty="75">🎉</button>
+            <button class="stk-btn" data-s="💫" data-tx="80" data-ty="75">💫</button>
+            <button class="stk-btn" data-s="🦋" data-tx="45" data-ty="8">🦋</button>
+            <button class="stk-btn" data-s="🌈" data-tx="45" data-ty="78">🌈</button>
+            <button class="stk-btn" data-s="🔥" data-tx="88" data-ty="45">🔥</button>
+            <button class="stk-btn" data-s="💎" data-tx="5"  data-ty="45">💎</button>
+            <button class="stk-btn" data-s="👑" data-tx="45" data-ty="40">👑</button>
+            <button class="stk-btn" data-s="🎵" data-tx="20" data-ty="55">🎵</button>
+            <button class="stk-btn" data-s="🌙" data-tx="72" data-ty="55">🌙</button>
+            <button class="stk-btn" data-s="✌️" data-tx="55" data-ty="25">✌️</button>
+          </div>
+        </div>
+
+        <!-- Tombol Aksi -->
+        <div class="btn-row">
+          <button id="btn-capture" class="btn-capture" onclick="startSession()">📸 AMBIL FOTO</button>
+          <button id="btn-reset"   class="btn-reset"   onclick="resetAll()" title="Reset">↺</button>
+        </div>
+
+        <div id="status" class="status-bar" role="status" aria-live="polite">
+          Tekan <strong>Aktifkan Kamera</strong> untuk memulai
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ══ KOLOM KANAN ══ -->
+    <aside class="strip-panel">
+
+      <h2 class="strip-panel-title">🎞 Photo Strip</h2>
+
+      <div class="strip-card">
+        <div class="photo-strip" id="photo-strip"></div>
+        <div class="strip-foot" id="strip-foot">
+          <div class="strip-foot-brand">✦ SNAPBOOTH ✦</div>
+          <div class="strip-foot-date" id="strip-date"></div>
+        </div>
+        <div class="ctrl-group" style="align-items:center">
+          <div class="ctrl-label" style="text-align:center">Warna Frame</div>
+          <div class="swatches" id="swatches">
+            <div class="swatch active" data-c="#ffffff" style="background:#fff"    title="Putih"></div>
+            <div class="swatch dark"   data-c="#1a1a1a" style="background:#1a1a1a" title="Hitam"></div>
+            <div class="swatch"        data-c="#f5e642" style="background:#f5e642" title="Kuning"></div>
+            <div class="swatch"        data-c="#ff6b6b" style="background:#ff6b6b" title="Merah"></div>
+            <div class="swatch"        data-c="#6bffb8" style="background:#6bffb8" title="Hijau"></div>
+            <div class="swatch"        data-c="#c8b4f5" style="background:#c8b4f5" title="Ungu"></div>
+          </div>
+        </div>
+      </div>
+
+      <button id="btn-dl" class="btn-dl" onclick="downloadStrip()">⬇ DOWNLOAD STRIP</button>
+
+      <!-- QR CODE -->
+      <div id="qr-section" class="qr-section" style="display:none">
+        <div class="qr-title">📲 Scan untuk ambil foto</div>
+        <div class="qr-subtitle">Link permanen — scan kapanpun, laptop boleh ditutup</div>
+        <canvas id="qr-canvas" class="qr-canvas"></canvas>
+        <a id="qr-link" href="#" target="_blank" class="qr-link">Buka link foto →</a>
+        <div class="qr-note">✅ Foto tersimpan di cloud — aman selamanya</div>
+        <button class="btn-qr-refresh" onclick="uploadAndGenerateQR()">🔄 Upload Ulang</button>
+      </div>
+
+      <p class="wm-note">
+        🔒 Versi gratis menyertakan watermark kecil.<br>
+        <em>Upgrade ke PRO untuk menghapusnya.</em>
+      </p>
+
+    </aside>
+
+  </main>
+
+  <canvas id="work-canvas"></canvas>
+  <script src="app.js"></script>
+</body>
+</html>
