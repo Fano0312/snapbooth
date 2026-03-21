@@ -26,7 +26,7 @@
 
   <link rel="stylesheet" href="style.css" />
 
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js"></script>
 </head>
 <body>
 
@@ -40,7 +40,9 @@
   </header>
 
   <main class="app">
+
     <section class="camera-panel">
+
       <div class="viewfinder" id="viewfinder">
         <video id="video" autoplay playsinline></video>
         <div id="sticker-overlay" class="sticker-overlay" aria-hidden="true"></div>
@@ -61,6 +63,7 @@
       </div>
 
       <div class="controls">
+
         <div class="ctrl-group">
           <div class="ctrl-label">Jumlah Foto</div>
           <div class="pill-row" id="shot-row">
@@ -74,12 +77,8 @@
         <div class="ctrl-group">
           <div class="ctrl-label">Layout Strip</div>
           <div class="pill-row" id="layout-row">
-            <button class="pill active" data-layout="vertical">
-              ☰ Vertikal
-            </button>
-            <button class="pill" data-layout="grid" disabled title="Grid 2×2 hanya untuk 4 foto">
-              ⊞ Grid 2×2
-            </button>
+            <button class="pill active" data-layout="vertical">☰ Vertikal</button>
+            <button class="pill" data-layout="grid" disabled title="Grid 2×2 hanya untuk 4 foto">⊞ Grid 2×2</button>
           </div>
           <div style="font-size:0.68rem;color:var(--muted);margin-top:2px">
             ⊞ Grid 2×2 hanya tersedia saat pilih 4 foto
@@ -140,14 +139,20 @@
     </section>
 
     <aside class="strip-panel">
+
       <h2 class="strip-panel-title">🎞 Photo Strip</h2>
+
       <div class="strip-card">
-        <div class="photo-strip" id="photo-strip"></div>
-        <div class="strip-foot" id="strip-foot">
-          <div class="strip-foot-brand">✦ SNAPBOOTH ✦</div>
-          <div class="strip-foot-date" id="strip-date"></div>
+        
+        <div class="strip-preview-wrapper layout-vertical" id="strip-preview-wrapper">
+          <div class="photo-strip" id="photo-strip"></div>
+          <div class="strip-foot" id="strip-foot">
+            <div class="strip-foot-brand">✦ SNAPBOOTH ✦</div>
+            <div class="strip-foot-date" id="strip-date"></div>
+          </div>
         </div>
-        <div class="ctrl-group" style="align-items:center">
+
+        <div class="ctrl-group" style="align-items:center; margin-top: 15px;">
           <div class="ctrl-label" style="text-align:center">Warna Frame</div>
           <div class="swatches" id="swatches">
             <div class="swatch active" data-c="#ffffff" style="background:#fff"    title="Putih"></div>
@@ -175,6 +180,7 @@
         🔒 Versi gratis menyertakan watermark kecil.<br>
         <em>Upgrade ke PRO untuk menghapusnya.</em>
       </p>
+
     </aside>
 
   </main>
