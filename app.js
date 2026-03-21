@@ -1,8 +1,7 @@
 /**
  * app.js — SnapBooth FINAL
  * Fitur: filter, stiker, multi-shot, blitz, kamera 0.5x
- * + ImgBB upload + QR permanen
- * + Pilih layout: Grid 2x2 atau Vertikal
+ * + ImgBB upload + QR permanen (Fixed Layout)
  */
 
 const IMGBB_API_KEY = '6947b43c605be95646f5101da2a2ede4';
@@ -139,14 +138,12 @@ function registerEvents() {
     btn.classList.add('active');
     state.totalShots = parseInt(btn.dataset.shots, 10);
 
-    // Grid hanya bisa untuk 4 foto — kalau pilih < 4, paksa vertikal
     if (state.totalShots < 4 && state.layout === 'grid') {
       state.layout = 'vertical';
       el.layoutRow.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
       el.layoutRow.querySelector('[data-layout="vertical"]').classList.add('active');
     }
 
-    // Grid hanya tersedia untuk 4 foto — disable/enable tombol grid
     const btnGrid = el.layoutRow.querySelector('[data-layout="grid"]');
     if (state.totalShots === 4) {
       btnGrid.disabled = false;
@@ -210,8 +207,11 @@ function registerEvents() {
     el.swatches.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
     sw.classList.add('active');
     state.frameColor = sw.dataset.c;
-    el.strip.style.background     = state.frameColor;
-    el.stripFoot.style.background = state.frameColor;
+    
+    // Warnai background kontainer utama
+    const wrapper = document.getElementById('strip-preview-wrapper');
+    if(wrapper) wrapper.style.background = state.frameColor;
+    
     const dark = state.frameColor === '#1a1a1a';
     el.stripFoot.querySelector('.strip-foot-brand').style.color = dark ? '#666' : '#aaa';
     el.stripFoot.querySelector('.strip-foot-date').style.color  = dark ? '#999' : '#555';
@@ -394,7 +394,7 @@ async function uploadAndGenerateQR() {
 }
 
 /* ============================================================
-   BUILD STRIP CANVAS
+   BUILD STRIP CANVAS (HASIL DOWNLOAD/UPLOAD)
    ============================================================ */
 async function buildStripCanvas() {
   if (state.layout === 'grid' && state.captured.length === 4) {
@@ -403,97 +403,67 @@ async function buildStripCanvas() {
   return await buildVerticalCanvas();
 }
 
-// ── Grid 2×2 (4 foto) ──
 async function buildGridCanvas() {
-  const SLOT_W = 420;
-  const SLOT_H = 320;
-  const PAD    = 30;
-  const GAP    = 10;
-  const LOGO_H = 90;
-  const FOOT_H = 60;
-  const TW     = PAD + (SLOT_W + GAP) * 2 - GAP + PAD;
-  const TH     = LOGO_H + PAD + (SLOT_H + GAP) * 2 - GAP + PAD + FOOT_H;
+  const SLOT_W = 420; const SLOT_H = 320;
+  const PAD = 30; const GAP = 10;
+  const LOGO_H = 90; const FOOT_H = 60;
+  const TW = PAD + (SLOT_W + GAP) * 2 - GAP + PAD;
+  const TH = LOGO_H + PAD + (SLOT_H + GAP) * 2 - GAP + PAD + FOOT_H;
 
-  const c  = document.createElement('canvas');
-  c.width  = TW; c.height = TH;
-  const dc = c.getContext('2d');
+  const c = document.createElement('canvas');
+  c.width = TW; c.height = TH; const dc = c.getContext('2d');
 
-  // Background frame
-  dc.fillStyle = state.frameColor;
-  dc.fillRect(0, 0, TW, TH);
+  dc.fillStyle = state.frameColor; dc.fillRect(0, 0, TW, TH);
 
-  // Logo atas
   const isDark = state.frameColor === '#1a1a1a';
-  dc.textAlign    = 'center';
-  dc.textBaseline = 'middle';
-  dc.fillStyle    = isDark ? '#ffffff' : '#000000';
-  dc.font         = 'bold 40px sans-serif';
+  dc.textAlign = 'center'; dc.textBaseline = 'middle';
+  dc.fillStyle = isDark ? '#ffffff' : '#000000';
+  dc.font = 'bold 40px sans-serif';
   dc.fillText('✦ SNAPBOOTH ✦', TW / 2, LOGO_H / 2);
 
-  // 4 foto dalam grid 2×2
   for (let i = 0; i < 4; i++) {
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const x   = PAD + col * (SLOT_W + GAP);
-    const y   = LOGO_H + PAD + row * (SLOT_H + GAP);
+    const col = i % 2; const row = Math.floor(i / 2);
+    const x = PAD + col * (SLOT_W + GAP);
+    const y = LOGO_H + PAD + row * (SLOT_H + GAP);
 
-    // Border putih
-    dc.fillStyle = '#ffffff';
-    dc.fillRect(x - 4, y - 4, SLOT_W + 8, SLOT_H + 8);
+    dc.fillStyle = '#ffffff'; dc.fillRect(x - 4, y - 4, SLOT_W + 8, SLOT_H + 8);
 
     const img = await loadImage(state.captured[i]);
     dc.drawImage(img, x, y, SLOT_W, SLOT_H);
 
-    // Watermark
-    dc.save();
-    dc.globalAlpha = 0.25; dc.fillStyle = '#fff';
-    dc.font = 'bold 12px sans-serif';
-    dc.textAlign = 'right'; dc.textBaseline = 'bottom';
+    dc.save(); dc.globalAlpha = 0.25; dc.fillStyle = '#fff';
+    dc.font = 'bold 12px sans-serif'; dc.textAlign = 'right'; dc.textBaseline = 'bottom';
     dc.fillText('snapbooth.app', x + SLOT_W - 6, y + SLOT_H - 6);
     dc.restore();
   }
 
-  // Footer tanggal
-  dc.textAlign    = 'center';
-  dc.textBaseline = 'middle';
-  dc.font         = 'bold 18px sans-serif';
-  dc.fillStyle    = isDark ? '#888' : 'rgba(0,0,0,0.45)';
+  dc.textAlign = 'center'; dc.textBaseline = 'middle';
+  dc.font = 'bold 18px sans-serif';
+  dc.fillStyle = isDark ? '#888' : 'rgba(0,0,0,0.45)';
   dc.fillText(getTodayString(), TW / 2, TH - FOOT_H / 2);
-
   return c;
 }
 
-// ── Vertikal (1–4 foto) ──
 async function buildVerticalCanvas() {
-  const SW  = 460;
-  const SH  = 345;
-  const PAD = 24;
-  const GAP = 8;
-  const FH  = 64;
-  const TW  = SW + PAD * 2;
-  const TH  = PAD + (SH + GAP) * state.captured.length - GAP + PAD + FH;
+  const SW = 460; const SH = 345;
+  const PAD = 24; const GAP = 8; const FH = 64;
+  const TW = SW + PAD * 2;
+  const TH = PAD + (SH + GAP) * state.captured.length - GAP + PAD + FH;
 
-  const c  = document.createElement('canvas');
-  c.width  = TW; c.height = TH;
-  const dc = c.getContext('2d');
+  const c = document.createElement('canvas');
+  c.width = TW; c.height = TH; const dc = c.getContext('2d');
 
-  dc.fillStyle = state.frameColor;
-  dc.fillRect(0, 0, TW, TH);
+  dc.fillStyle = state.frameColor; dc.fillRect(0, 0, TW, TH);
 
   for (let i = 0; i < state.captured.length; i++) {
     const img = await loadImage(state.captured[i]);
-    const y   = PAD + i * (SH + GAP);
+    const y = PAD + i * (SH + GAP);
 
-    // Border putih
-    dc.fillStyle = '#ffffff';
-    dc.fillRect(PAD - 4, y - 4, SW + 8, SH + 8);
-
+    dc.fillStyle = '#ffffff'; dc.fillRect(PAD - 4, y - 4, SW + 8, SH + 8);
     dc.drawImage(img, PAD, y, SW, SH);
 
-    dc.save();
-    dc.globalAlpha = 0.25; dc.fillStyle = '#fff';
-    dc.font = 'bold 12px sans-serif';
-    dc.textAlign = 'right'; dc.textBaseline = 'bottom';
+    dc.save(); dc.globalAlpha = 0.25; dc.fillStyle = '#fff';
+    dc.font = 'bold 12px sans-serif'; dc.textAlign = 'right'; dc.textBaseline = 'bottom';
     dc.fillText('snapbooth.app', PAD + SW - 6, y + SH - 6);
     dc.restore();
   }
@@ -506,33 +476,29 @@ async function buildVerticalCanvas() {
   dc.font = 'bold 13px sans-serif';
   dc.fillStyle = isDark ? '#999' : 'rgba(0,0,0,0.5)';
   dc.fillText(getTodayString(), TW / 2, TH - FH + 44);
-
   return c;
 }
 
 /* ============================================================
-   RENDER STRIP (preview UI)
+   RENDER STRIP PREVIEW (UI) - FIXED LAYOUT
    ============================================================ */
 function renderSlots() {
   if (!el.strip) return;
   el.strip.innerHTML = '';
-  el.strip.style.background = state.frameColor;
-
-  const isGrid = state.layout === 'grid' && state.totalShots === 4;
-
-  if (isGrid) {
-    el.strip.style.display              = 'grid';
-    el.strip.style.gridTemplateColumns  = '1fr 1fr';
-    el.strip.style.gap                  = '4px';
-    el.strip.style.padding              = '10px';
-    el.strip.style.width                = '220px';
-  } else {
-    el.strip.style.display              = 'flex';
-    el.strip.style.flexDirection        = 'column';
-    el.strip.style.gap                  = '5px';
-    el.strip.style.padding              = '14px';
-    el.strip.style.width                = '180px';
+  
+  const wrapper = document.getElementById('strip-preview-wrapper');
+  if (wrapper) {
+    wrapper.style.background = state.frameColor;
+    
+    if (state.layout === 'grid' && state.totalShots === 4) {
+      wrapper.className = 'strip-preview-wrapper layout-grid';
+    } else {
+      wrapper.className = 'strip-preview-wrapper layout-vertical';
+    }
   }
+
+  // Hapus sisa inline style yang mengganggu CSS
+  el.strip.removeAttribute('style');
 
   for (let i = 0; i < state.totalShots; i++) {
     const slot     = document.createElement('div');
@@ -543,7 +509,7 @@ function renderSlots() {
   }
 
   updateDots();
-  el.btnDl?.classList.remove('ready');
+  if (el.btnDl) el.btnDl.classList.remove('ready');
 }
 
 function fillSlot(i, dataUrl) {
@@ -593,7 +559,7 @@ function resetAll() {
   el.stickerRow?.querySelectorAll('.stk-btn').forEach(b => b.classList.remove('active'));
   el.qrSection.style.display = 'none';
   renderSlots();
-  el.btnDl?.classList.remove('ready');
+  if (el.btnDl) el.btnDl.classList.remove('ready');
   setStatus('Reset — siap ambil foto baru');
 }
 
