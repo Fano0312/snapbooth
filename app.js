@@ -396,88 +396,116 @@ async function uploadAndGenerateQR() {
 /* ============================================================
    BUILD STRIP CANVAS (HASIL DOWNLOAD/UPLOAD)
    ============================================================ */
-async function buildStripCanvas() {
-  if (state.layout === 'grid' && state.captured.length === 4) {
-    return await buildGridCanvas();
-  }
-  return await buildVerticalCanvas();
-}
 
-async function buildGridCanvas() {
-  const SLOT_W = 420; const SLOT_H = 320;
-  const PAD = 30; const GAP = 10;
-  const LOGO_H = 90; const FOOT_H = 60;
-  const TW = PAD + (SLOT_W + GAP) * 2 - GAP + PAD;
-  const TH = LOGO_H + PAD + (SLOT_H + GAP) * 2 - GAP + PAD + FOOT_H;
-
-  const c = document.createElement('canvas');
-  c.width = TW; c.height = TH; const dc = c.getContext('2d');
-
-  dc.fillStyle = state.frameColor; dc.fillRect(0, 0, TW, TH);
-
-  const isDark = state.frameColor === '#1a1a1a';
-  dc.textAlign = 'center'; dc.textBaseline = 'middle';
-  dc.fillStyle = isDark ? '#ffffff' : '#000000';
-  dc.font = 'bold 40px sans-serif';
-  dc.fillText('✦ SNAPBOOTH ✦', TW / 2, LOGO_H / 2);
-
-  for (let i = 0; i < 4; i++) {
-    const col = i % 2; const row = Math.floor(i / 2);
-    const x = PAD + col * (SLOT_W + GAP);
-    const y = LOGO_H + PAD + row * (SLOT_H + GAP);
-
-    dc.fillStyle = '#ffffff'; dc.fillRect(x - 4, y - 4, SLOT_W + 8, SLOT_H + 8);
-
-    const img = await loadImage(state.captured[i]);
-    dc.drawImage(img, x, y, SLOT_W, SLOT_H);
-
-    dc.save(); dc.globalAlpha = 0.25; dc.fillStyle = '#fff';
-    dc.font = 'bold 12px sans-serif'; dc.textAlign = 'right'; dc.textBaseline = 'bottom';
-    dc.fillText('snapbooth.app', x + SLOT_W - 6, y + SLOT_H - 6);
-    dc.restore();
-  }
-
-  dc.textAlign = 'center'; dc.textBaseline = 'middle';
-  dc.font = 'bold 18px sans-serif';
-  dc.fillStyle = isDark ? '#888' : 'rgba(0,0,0,0.45)';
-  dc.fillText(getTodayString(), TW / 2, TH - FOOT_H / 2);
-  return c;
-}
 
 async function buildVerticalCanvas() {
-  const SW = 460; const SH = 345;
-  const PAD = 24; const GAP = 8; const FH = 64;
-  const TW = SW + PAD * 2;
-  const TH = PAD + (SH + GAP) * state.captured.length - GAP + PAD + FH;
+  /*
+    Ukuran standar photo strip cetak: 2 × 6 inci
+    Resolusi 300 DPI (kualitas cetak profesional):
+      Lebar  = 2 × 300 = 600 px
+      Tinggi = 6 × 300 = 1800 px
 
-  const c = document.createElement('canvas');
-  c.width = TW; c.height = TH; const dc = c.getContext('2d');
+    Layout dalam strip:
+      - Padding atas/bawah : 30px
+      - Padding kiri/kanan : 24px
+      - Gap antar foto     : 10px
+      - Footer brand+tanggal: 80px
+      - Slot foto: sisa tinggi dibagi jumlah foto
+  */
 
-  dc.fillStyle = state.frameColor; dc.fillRect(0, 0, TW, TH);
+  const W      = 600;    // 2 inci × 300dpi
+  const H      = 1800;   // 6 inci × 300dpi
+  const PAD_X  = 24;     // padding kiri kanan
+  const PAD_Y  = 30;     // padding atas bawah
+  const GAP    = 10;     // jarak antar foto
+  const FOOT_H = 80;     // tinggi footer
+  const count  = state.captured.length;
 
-  for (let i = 0; i < state.captured.length; i++) {
+  // Hitung tinggi tiap slot foto secara otomatis
+  // agar pas mengisi strip tanpa overflow
+  const totalGap  = GAP * (count - 1);
+  const slotW     = W - PAD_X * 2;
+  const slotH     = Math.floor(
+    (H - PAD_Y * 2 - FOOT_H - totalGap) / count
+  );
+
+  const c  = document.createElement('canvas');
+  c.width  = W;
+  c.height = H;
+  const dc = c.getContext('2d');
+
+  // Background frame
+  dc.fillStyle = state.frameColor;
+  dc.fillRect(0, 0, W, H);
+
+  // Gambar tiap foto
+  for (let i = 0; i < count; i++) {
     const img = await loadImage(state.captured[i]);
-    const y = PAD + i * (SH + GAP);
+    const x   = PAD_X;
+    const y   = PAD_Y + i * (slotH + GAP);
 
-    dc.fillStyle = '#ffffff'; dc.fillRect(PAD - 4, y - 4, SW + 8, SH + 8);
-    dc.drawImage(img, PAD, y, SW, SH);
+    // Border putih tipis di sekitar foto
+    dc.fillStyle = '#ffffff';
+    dc.fillRect(x - 3, y - 3, slotW + 6, slotH + 6);
 
-    dc.save(); dc.globalAlpha = 0.25; dc.fillStyle = '#fff';
-    dc.font = 'bold 12px sans-serif'; dc.textAlign = 'right'; dc.textBaseline = 'bottom';
-    dc.fillText('snapbooth.app', PAD + SW - 6, y + SH - 6);
+    // Gambar foto — cover agar tidak distorsi
+    const imgRatio    = img.width / img.height;
+    const slotRatio   = slotW / slotH;
+    let sx = 0, sy = 0, sw = img.width, sh = img.height;
+
+    if (imgRatio > slotRatio) {
+      // Foto lebih lebar dari slot → crop kiri kanan
+      sw = img.height * slotRatio;
+      sx = (img.width - sw) / 2;
+    } else {
+      // Foto lebih tinggi dari slot → crop atas bawah
+      sh = img.width / slotRatio;
+      sy = (img.height - sh) / 2;
+    }
+    dc.drawImage(img, sx, sy, sw, sh, x, y, slotW, slotH);
+
+    // Watermark pojok kanan bawah tiap foto
+    dc.save();
+    dc.globalAlpha  = 0.25;
+    dc.fillStyle    = '#ffffff';
+    dc.font         = 'bold 14px sans-serif';
+    dc.textAlign    = 'right';
+    dc.textBaseline = 'bottom';
+    dc.fillText('snapbooth.app', x + slotW - 8, y + slotH - 8);
     dc.restore();
   }
 
-  const isDark = state.frameColor === '#1a1a1a';
-  dc.textAlign = 'center'; dc.textBaseline = 'middle';
-  dc.font = '600 14px sans-serif';
-  dc.fillStyle = isDark ? '#777' : 'rgba(0,0,0,0.4)';
-  dc.fillText('✦ SNAPBOOTH ✦', TW / 2, TH - FH + 20);
-  dc.font = 'bold 13px sans-serif';
-  dc.fillStyle = isDark ? '#999' : 'rgba(0,0,0,0.5)';
-  dc.fillText(getTodayString(), TW / 2, TH - FH + 44);
+  // Footer: brand + tanggal
+  const isDark  = state.frameColor === '#1a1a1a';
+  const footY   = H - FOOT_H;
+  const clrBrand = isDark ? '#777' : 'rgba(0,0,0,0.4)';
+  const clrDate  = isDark ? '#999' : 'rgba(0,0,0,0.5)';
+
+  dc.textAlign    = 'center';
+  dc.textBaseline = 'middle';
+  dc.font         = '600 18px sans-serif';
+  dc.fillStyle    = clrBrand;
+  dc.fillText('✦ SNAPBOOTH ✦', W / 2, footY + 24);
+
+  dc.font      = 'bold 16px sans-serif';
+  dc.fillStyle = clrDate;
+  dc.fillText(getTodayString(), W / 2, footY + 54);
+
   return c;
 }
+```
+
+---
+
+## Kenapa 300 DPI?
+```
+Kalau mau CETAK fisik:
+  300 DPI = kualitas profesional, tajam saat dicetak
+  600px × 1800px = 2×6 inci persis di printer
+
+Kalau hanya untuk digital (WhatsApp/sosmed):
+  Ukuran tetap sama, tapi file lebih besar (~1-2MB)
+  Masih aman untuk share
 
 /* ============================================================
    RENDER STRIP PREVIEW (UI) - FIXED LAYOUT
