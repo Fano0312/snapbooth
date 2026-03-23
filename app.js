@@ -1,8 +1,9 @@
 /**
  * app.js — SnapBooth FINAL
- * Fitur: filter, stiker, multi-shot, blitz, kamera potret
- * + ImgBB upload + QR permanen 
- * + BINGKAI TEBAL (Anti nge-zoom di HP)
+ * Fitur: filter, stiker, multi-shot, blitz, lensa potret
+ * + ImgBB upload + QR permanen
+ * + BINGKAI TEBAL
+ * + REAL ULTRA-WIDE LENS KAMERA FADED
  */
 
 const IMGBB_API_KEY = '6947b43c605be95646f5101da2a2ede4';
@@ -59,55 +60,111 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ============================================================
-   KAMERA
+   KAMERA (UPDATE: Deteksi Lensa Ultra-Wide Asli)
    ============================================================ */
 async function startCamera() {
-  setStatus('Meminta izin kamera...');
+  setStatus('⏳ Meminta izin kamera...');
   if (state.stream) {
     state.stream.getTracks().forEach(t => t.stop());
     state.stream = null;
   }
+
   try {
+    let videoConstraints = {
+      facingMode: state.facingMode,
+      width: { ideal: 960 },
+      height: { ideal: 1280 }
+    };
+
+    let isUltraWideFound = false;
+
+    // Jika mode 0.5x belakang ditekan, kita cari lensa fisik Ultra Wide
+    if (state.facingMode === 'environment' && state.zoomLevel === 0.5) {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter(d => d.kind === 'videoinput');
+      
+      // Cari nama lensa yang mengandung kata kunci wide/ultra
+      const ultraWideCam = videoInputs.find(d => {
+        const label = d.label.toLowerCase();
+        return label.includes('ultra') || label.includes('wide') || label.includes('0.5');
+      });
+
+      if (ultraWideCam) {
+        // Jika lensa ditemukan, paksa browser memakai lensa itu
+        videoConstraints = {
+          deviceId: { exact: ultraWideCam.deviceId },
+          width: { ideal: 960 },
+          height: { ideal: 1280 }
+        };
+        isUltraWideFound = true;
+      }
+    }
+
     state.stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: state.facingMode, width: { ideal: 960 }, height: { ideal: 1280 } },
+      video: videoConstraints,
       audio: false,
     });
+
     el.video.srcObject = state.stream;
     await new Promise(resolve => {
       if (el.video.readyState >= 2) { resolve(); return; }
       el.video.addEventListener('canplay', resolve, { once: true });
     });
+
     el.video.style.display = 'block';
     el.noCam.classList.remove('show');
-    applyZoom();
+    
+    applyZoom(); 
     tryNativeZoom();
-    const label = state.facingMode === 'user' ? 'Kamera depan' : `Kamera belakang ${state.zoomLevel < 1 ? '(0.5×)' : ''}`;
-    setStatus(`${label} aktif 🟢`);
+
+    // Berikan status ke user apakah lensa Ultra Wide aslinya tembus atau tidak
+    let statusMsg = '';
+    if (state.facingMode === 'user') {
+      statusMsg = 'Kamera depan aktif 🟢';
+    } else if (state.zoomLevel === 0.5) {
+      statusMsg = isUltraWideFound 
+        ? 'Lensa Ultra-Wide (0.5×) asli aktif 🔭' 
+        : '⚠️ Ultra-Wide native tidak terdeteksi browser (menggunakan zoom terluas standar)';
+    } else {
+      statusMsg = 'Kamera belakang aktif 🟢';
+    }
+    setStatus(statusMsg);
+
   } catch (err) {
     setStatus('⚠️ Akses ditolak atau kamera tidak ditemukan.');
     el.noCam.classList.add('show');
   }
 }
 
+// 🔴 FIX: Menghapus manipulasi CSS (digital zoom) agar gambar utuh
 function applyZoom() {
   if (state.facingMode === 'user') {
-    el.video.style.transform = 'scaleX(-1)'; 
+    el.video.style.transform = 'scaleX(-1)'; // Cuma untuk efek cermin depan
   } else {
-    if (state.zoomLevel === 0.5) {
-      el.video.style.transform = 'scaleX(1) scale(0.6)'; 
-    } else {
-      el.video.style.transform = 'scaleX(1) scale(1)';   
-    }
+    el.video.style.transform = 'scaleX(1)';  // Kamera belakang tidak perlu di-scale lagi
   }
   el.video.style.transformOrigin = 'center center';
   el.zoomLabel.textContent = (state.zoomLevel === 0.5 && state.facingMode === 'environment') ? '0.5×' : '1×';
 }
 
+// 🔴 FIX: Memanfaatkan fitur PTZ (Pan-Tilt-Zoom) bawaan browser
 async function tryNativeZoom() {
-  if (state.zoomLevel >= 1) return;
   try {
     const track = state.stream?.getVideoTracks()[0];
-    if (caps?.zoom) await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
+    if (!track) return;
+    const caps = track.getCapabilities?.();
+    
+    // Jika browser support mengatur tingkat zoom lensa secara manual
+    if (caps && caps.zoom) {
+      if (state.zoomLevel === 0.5) {
+        // Mundurkan fokus lensa sejauh mungkin (paling wide)
+        await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
+      } else {
+        // Kembalikan fokus lensa ke titik normal (baseline 1)
+        const baseline = Math.max(caps.zoom.min, 1);
+        await track.applyConstraints({ advanced: [{ zoom: baseline }] });
+      }
+    }
   } catch (_) {}
 }
 
@@ -331,18 +388,17 @@ async function uploadAndGenerateQR() {
 }
 
 /* ============================================================
-   BUILD STRIP CANVAS (FILE DOWNLOAD YANG DIPERBAIKI)
+   BUILD STRIP CANVAS 
    ============================================================ */
 async function buildStripCanvas() {
   if (state.layout === 'grid' && state.captured.length === 4) return await buildGridCanvas();
   return await buildVerticalCanvas();
 }
 
-// ── BINGKAI GRID 2X2 ──
 async function buildGridCanvas() {
   const SLOT_W = 300; 
   const SLOT_H = 400; 
-  const PAD    = 45;  // 🔴 MARGIN LUAR DIPERTEBAL (AGAR HP TIDAK NGEZOOM)
+  const PAD    = 45;  
   const GAP    = 18;  
   const LOGO_H = 100;
   const FOOT_H = 70;
@@ -385,12 +441,11 @@ async function buildGridCanvas() {
   return c;
 }
 
-// ── BINGKAI VERTIKAL ──
 async function buildVerticalCanvas() {
-  const SW  = 360; // Lebar foto diperkecil
-  const SH  = 480; // Tinggi potret
-  const PAD = 45;  // 🔴 MARGIN KIRI KANAN DIPERTEBAL (AGAR HP TIDAK NGEZOOM)
-  const GAP = 18;  // Jarak antar foto
+  const SW  = 360; 
+  const SH  = 480; 
+  const PAD = 45;  
+  const GAP = 18;  
   const FH  = 85;  
   const TW  = SW + PAD * 2;
   const TH  = PAD + (SH + GAP) * state.captured.length - GAP + PAD + FH;
@@ -404,7 +459,6 @@ async function buildVerticalCanvas() {
     const img = await loadImage(state.captured[i]);
     const y   = PAD + i * (SH + GAP);
 
-    // Outline tipis dalam foto
     dc.fillStyle = '#ffffff'; dc.fillRect(PAD - 6, y - 6, SW + 12, SH + 12);
 
     const cropW = img.width; const cropH = img.width * (SH / SW);
