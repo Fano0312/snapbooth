@@ -1,9 +1,9 @@
 /**
  * app.js — SnapBooth FINAL
- * Fitur: filter, stiker, multi-shot, blitz, lensa potret
- * + ImgBB upload + QR permanen
- * + BINGKAI TEBAL
- * + REAL ULTRA-WIDE LENS KAMERA FADED
+ * Fitur: filter, stiker, multi-shot, blitz, kamera potret
+ * + ImgBB upload + QR permanen 
+ * + BINGKAI TEBAL 
+ * + DEEP SCAN ULTRA-WIDE LENS
  */
 
 const IMGBB_API_KEY = '6947b43c605be95646f5101da2a2ede4';
@@ -60,52 +60,73 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ============================================================
-   KAMERA (UPDATE: Deteksi Lensa Ultra-Wide Asli)
+   KAMERA DENGAN DEEP SCAN ULTRA-WIDE
    ============================================================ */
 async function startCamera() {
-  setStatus('⏳ Meminta izin kamera...');
+  setStatus('⏳ Meminta izin & memindai lensa...');
   if (state.stream) {
     state.stream.getTracks().forEach(t => t.stop());
     state.stream = null;
   }
 
   try {
-    let videoConstraints = {
-      facingMode: state.facingMode,
-      width: { ideal: 960 },
-      height: { ideal: 1280 }
+    // 1. Pancing izin kamera dulu agar label perangkat terbaca
+    await navigator.mediaDevices.getUserMedia({ audio: false, video: true })
+      .then(s => s.getTracks().forEach(t => t.stop())).catch(e => {});
+
+    // 2. Scan semua lensa yang ada di HP
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoInputs = devices.filter(d => d.kind === 'videoinput');
+    
+    let finalConstraints = {
+      video: { width: { ideal: 960 }, height: { ideal: 1280 } }
     };
 
     let isUltraWideFound = false;
 
-    // Jika mode 0.5x belakang ditekan, kita cari lensa fisik Ultra Wide
-    if (state.facingMode === 'environment' && state.zoomLevel === 0.5) {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const videoInputs = devices.filter(d => d.kind === 'videoinput');
-      
-      // Cari nama lensa yang mengandung kata kunci wide/ultra
-      const ultraWideCam = videoInputs.find(d => {
-        const label = d.label.toLowerCase();
-        return label.includes('ultra') || label.includes('wide') || label.includes('0.5');
-      });
+    if (state.facingMode === 'user') {
+      finalConstraints.video.facingMode = 'user';
+    } else {
+      // Saring hanya lensa belakang
+      const backCams = videoInputs.filter(d => 
+        d.label.toLowerCase().includes('back') || 
+        d.label.toLowerCase().includes('belakang') ||
+        d.label.toLowerCase().includes('environment') ||
+        d.label.toLowerCase().includes('camera2') ||
+        (!d.label.toLowerCase().includes('front') && !d.label.toLowerCase().includes('depan'))
+      );
 
-      if (ultraWideCam) {
-        // Jika lensa ditemukan, paksa browser memakai lensa itu
-        videoConstraints = {
-          deviceId: { exact: ultraWideCam.deviceId },
-          width: { ideal: 960 },
-          height: { ideal: 1280 }
-        };
-        isUltraWideFound = true;
+      if (state.zoomLevel === 0.5) {
+        // Cari lensa Ultra-Wide secara spesifik
+        const uwCam = backCams.find(d => 
+          d.label.toLowerCase().match(/ultra|wide|0\.5/)
+        );
+
+        if (uwCam) {
+          finalConstraints.video.deviceId = { exact: uwCam.deviceId };
+          isUltraWideFound = true;
+        } else if (backCams.length > 1) {
+          // Jika tidak ada label khusus tapi ada banyak lensa belakang,
+          // paksakan mengambil lensa terakhir (biasanya ultrawide/macro di Android)
+          finalConstraints.video.deviceId = { exact: backCams[backCams.length - 1].deviceId };
+          isUltraWideFound = true;
+        } else {
+          finalConstraints.video.facingMode = { ideal: 'environment' };
+        }
+      } else {
+        // 1x Normal (Kamera Belakang Utama, biasanya index 0)
+        if (backCams.length > 0) {
+          finalConstraints.video.deviceId = { exact: backCams[0].deviceId };
+        } else {
+          finalConstraints.video.facingMode = { ideal: 'environment' };
+        }
       }
     }
 
-    state.stream = await navigator.mediaDevices.getUserMedia({
-      video: videoConstraints,
-      audio: false,
-    });
-
+    // 3. Nyalakan kamera dengan lensa yang terpilih
+    state.stream = await navigator.mediaDevices.getUserMedia(finalConstraints);
     el.video.srcObject = state.stream;
+    
     await new Promise(resolve => {
       if (el.video.readyState >= 2) { resolve(); return; }
       el.video.addEventListener('canplay', resolve, { once: true });
@@ -114,21 +135,21 @@ async function startCamera() {
     el.video.style.display = 'block';
     el.noCam.classList.remove('show');
     
-    applyZoom(); 
+    applyMirroring();
     tryNativeZoom();
 
-    // Berikan status ke user apakah lensa Ultra Wide aslinya tembus atau tidak
-    let statusMsg = '';
+    // Notifikasi status ke user
     if (state.facingMode === 'user') {
-      statusMsg = 'Kamera depan aktif 🟢';
+      setStatus('Kamera depan aktif 🟢');
     } else if (state.zoomLevel === 0.5) {
-      statusMsg = isUltraWideFound 
-        ? 'Lensa Ultra-Wide (0.5×) asli aktif 🔭' 
-        : '⚠️ Ultra-Wide native tidak terdeteksi browser (menggunakan zoom terluas standar)';
+      if (isUltraWideFound) {
+        setStatus('Lensa Ultra-Wide fisik berhasil diakses 🔭');
+      } else {
+        setStatus('⚠️ Browser memblokir ultra-wide fisik (pakai max-zoom standar)');
+      }
     } else {
-      statusMsg = 'Kamera belakang aktif 🟢';
+      setStatus('Kamera belakang aktif 🟢');
     }
-    setStatus(statusMsg);
 
   } catch (err) {
     setStatus('⚠️ Akses ditolak atau kamera tidak ditemukan.');
@@ -136,31 +157,26 @@ async function startCamera() {
   }
 }
 
-// 🔴 FIX: Menghapus manipulasi CSS (digital zoom) agar gambar utuh
-function applyZoom() {
+function applyMirroring() {
+  // Hanya mirror kamera depan. Kamera belakang biarkan apa adanya agar tidak manipulasi zoom digital.
   if (state.facingMode === 'user') {
-    el.video.style.transform = 'scaleX(-1)'; // Cuma untuk efek cermin depan
+    el.video.style.transform = 'scaleX(-1)'; 
   } else {
-    el.video.style.transform = 'scaleX(1)';  // Kamera belakang tidak perlu di-scale lagi
+    el.video.style.transform = 'scaleX(1)';   
   }
   el.video.style.transformOrigin = 'center center';
   el.zoomLabel.textContent = (state.zoomLevel === 0.5 && state.facingMode === 'environment') ? '0.5×' : '1×';
 }
 
-// 🔴 FIX: Memanfaatkan fitur PTZ (Pan-Tilt-Zoom) bawaan browser
 async function tryNativeZoom() {
   try {
     const track = state.stream?.getVideoTracks()[0];
     if (!track) return;
     const caps = track.getCapabilities?.();
-    
-    // Jika browser support mengatur tingkat zoom lensa secara manual
-    if (caps && caps.zoom) {
+    if (caps?.zoom) {
       if (state.zoomLevel === 0.5) {
-        // Mundurkan fokus lensa sejauh mungkin (paling wide)
         await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
       } else {
-        // Kembalikan fokus lensa ke titik normal (baseline 1)
         const baseline = Math.max(caps.zoom.min, 1);
         await track.applyConstraints({ advanced: [{ zoom: baseline }] });
       }
