@@ -1,5 +1,8 @@
 /**
- * app.js — SnapBooth FINAL FIXED
+ * app.js — SnapBooth FINAL
+ * Fitur: filter, stiker, multi-shot, blitz, kamera potret
+ * + ImgBB upload + QR permanen 
+ * + BINGKAI TEBAL (Anti nge-zoom di HP)
  */
 
 const IMGBB_API_KEY = '6947b43c605be95646f5101da2a2ede4';
@@ -22,8 +25,6 @@ const state = {
 let el = {};
 
 document.addEventListener('DOMContentLoaded', () => {
-
-  // Kumpulkan semua elemen — pakai null check agar tidak error
   el = {
     video:       document.getElementById('video'),
     workCanvas:  document.getElementById('work-canvas'),
@@ -35,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     zoomLabel:   document.getElementById('zoom-label'),
     stickerOvl:  document.getElementById('sticker-overlay'),
     noCam:       document.getElementById('no-cam'),
+    stripPreviewWrapper: document.getElementById('strip-preview-wrapper'),
     strip:       document.getElementById('photo-strip'),
     stripFoot:   document.getElementById('strip-foot'),
     stripDate:   document.getElementById('strip-date'),
@@ -50,16 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
     qrLink:      document.getElementById('qr-link'),
   };
 
-  // Cek elemen kritis
-  const required = ['video','workCanvas','countdown','blitz','status',
-    'shotDots','filterLabel','stickerOvl','noCam','strip','stripFoot',
-    'stripDate','btnCapture','btnDl','shotRow','filterRow','stickerRow','swatches'];
-
-  let missing = required.filter(k => !el[k]);
-  if (missing.length > 0) {
-    console.error('[SnapBooth] Elemen tidak ditemukan:', missing);
-  }
-
   registerEvents();
   setStripDate();
   renderSlots();
@@ -71,76 +63,51 @@ document.addEventListener('DOMContentLoaded', () => {
    ============================================================ */
 async function startCamera() {
   setStatus('Meminta izin kamera...');
-
-  // Stop stream lama
   if (state.stream) {
     state.stream.getTracks().forEach(t => t.stop());
     state.stream = null;
   }
-
   try {
-    const constraints = {
-      video: {
-        facingMode: state.facingMode,
-        width:      { ideal: 1280 },
-        height:     { ideal: 960 },
-      },
+    state.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: state.facingMode, width: { ideal: 960 }, height: { ideal: 1280 } },
       audio: false,
-    };
-
-    state.stream = await navigator.mediaDevices.getUserMedia(constraints);
+    });
     el.video.srcObject = state.stream;
-
-    // Tunggu video siap
     await new Promise(resolve => {
       if (el.video.readyState >= 2) { resolve(); return; }
       el.video.addEventListener('canplay', resolve, { once: true });
     });
-
     el.video.style.display = 'block';
     el.noCam.classList.remove('show');
     applyZoom();
     tryNativeZoom();
-
-    const label = state.facingMode === 'user'
-      ? 'Kamera depan'
-      : `Kamera belakang ${state.zoomLevel < 1 ? '(0.5×)' : ''}`;
+    const label = state.facingMode === 'user' ? 'Kamera depan' : `Kamera belakang ${state.zoomLevel < 1 ? '(0.5×)' : ''}`;
     setStatus(`${label} aktif 🟢`);
-
   } catch (err) {
-    let msg = '⚠️ Gagal akses kamera.';
-    if (err.name === 'NotAllowedError')      msg = '⚠️ Akses ditolak. Izinkan kamera di browser.';
-    if (err.name === 'NotFoundError')        msg = '⚠️ Kamera tidak ditemukan.';
-    if (err.name === 'NotReadableError')     msg = '⚠️ Kamera dipakai aplikasi lain. Refresh dulu.';
-    if (err.name === 'OverconstrainedError') msg = '⚠️ Kamera tidak support mode ini.';
-    setStatus(msg);
+    setStatus('⚠️ Akses ditolak atau kamera tidak ditemukan.');
     el.noCam.classList.add('show');
-    console.error('[SnapBooth Camera]', err.name, err.message);
   }
 }
 
 function applyZoom() {
-  if (!el.video) return;
-  if (state.zoomLevel === 0.5) {
-    el.video.style.transform       = 'scaleX(-1) scale(0.6)';
-    el.video.style.transformOrigin = 'center center';
-    if (el.zoomLabel) el.zoomLabel.textContent = '0.5×';
+  if (state.facingMode === 'user') {
+    el.video.style.transform = 'scaleX(-1)'; 
   } else {
-    el.video.style.transform       = state.facingMode === 'user' ? 'scaleX(-1)' : 'scaleX(1)';
-    el.video.style.transformOrigin = 'center center';
-    if (el.zoomLabel) el.zoomLabel.textContent = '1×';
+    if (state.zoomLevel === 0.5) {
+      el.video.style.transform = 'scaleX(1) scale(0.6)'; 
+    } else {
+      el.video.style.transform = 'scaleX(1) scale(1)';   
+    }
   }
+  el.video.style.transformOrigin = 'center center';
+  el.zoomLabel.textContent = (state.zoomLevel === 0.5 && state.facingMode === 'environment') ? '0.5×' : '1×';
 }
 
 async function tryNativeZoom() {
   if (state.zoomLevel >= 1) return;
   try {
     const track = state.stream?.getVideoTracks()[0];
-    if (!track) return;
-    const caps = track.getCapabilities?.();
-    if (caps?.zoom) {
-      await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
-    }
+    if (caps?.zoom) await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
   } catch (_) {}
 }
 
@@ -156,141 +123,102 @@ function switchCamera(btn) {
    EVENT LISTENERS
    ============================================================ */
 function registerEvents() {
+  el.shotRow.addEventListener('click', e => {
+    const btn = e.target.closest('[data-shots]');
+    if (!btn || state.isShooting) return;
+    el.shotRow.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.totalShots = parseInt(btn.dataset.shots, 10);
 
-  // Shot count
-  if (el.shotRow) {
-    el.shotRow.addEventListener('click', e => {
-      const btn = e.target.closest('[data-shots]');
-      if (!btn || state.isShooting) return;
-      el.shotRow.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.totalShots = parseInt(btn.dataset.shots, 10);
-
-      // Grid hanya untuk 4 foto
-      if (state.totalShots < 4 && state.layout === 'grid') {
-        state.layout = 'vertical';
-        if (el.layoutRow) {
-          el.layoutRow.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
-          el.layoutRow.querySelector('[data-layout="vertical"]')?.classList.add('active');
-        }
-      }
-
-      // Toggle disabled tombol grid
-      if (el.layoutRow) {
-        const btnGrid = el.layoutRow.querySelector('[data-layout="grid"]');
-        if (btnGrid) {
-          btnGrid.disabled = state.totalShots !== 4;
-          btnGrid.title    = state.totalShots !== 4 ? 'Grid 2×2 hanya untuk 4 foto' : '';
-        }
-      }
-
-      resetAll();
-      setStatus(`Mode <strong>${state.totalShots} foto</strong> dipilih`);
-    });
-  }
-
-  // Layout
-  if (el.layoutRow) {
-    el.layoutRow.addEventListener('click', e => {
-      const btn = e.target.closest('[data-layout]');
-      if (!btn || btn.disabled) return;
+    if (state.totalShots < 4 && state.layout === 'grid') {
+      state.layout = 'vertical';
       el.layoutRow.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
+      el.layoutRow.querySelector('[data-layout="vertical"]').classList.add('active');
+    }
+
+    const btnGrid = el.layoutRow.querySelector('[data-layout="grid"]');
+    if (state.totalShots === 4) {
+      btnGrid.disabled = false; btnGrid.title = '';
+    } else {
+      btnGrid.disabled = true; btnGrid.title = 'Grid 2×2 hanya untuk 4 foto';
+    }
+
+    resetAll();
+    setStatus(`Mode <strong>${state.totalShots} foto</strong> dipilih`);
+  });
+
+  el.layoutRow.addEventListener('click', e => {
+    const btn = e.target.closest('[data-layout]');
+    if (!btn || btn.disabled) return;
+    el.layoutRow.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.layout = btn.dataset.layout;
+    renderSlots();
+  });
+
+  el.filterRow.addEventListener('click', e => {
+    const btn = e.target.closest('[data-filter]');
+    if (!btn) return;
+    el.filterRow.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.activeFilter = btn.dataset.filter;
+    el.video.style.filter = state.activeFilter || 'none';
+    el.filterLabel.textContent = btn.dataset.label.toUpperCase();
+  });
+
+  el.stickerRow.addEventListener('click', e => {
+    const btn = e.target.closest('[data-s]');
+    if (!btn) return;
+    const { s: emoji, tx, ty } = btn.dataset;
+    const idx = state.activeStickers.findIndex(s => s.emoji === emoji);
+    if (idx !== -1) {
+      state.activeStickers.splice(idx, 1);
+      btn.classList.remove('active');
+      removeLiveSticker(emoji);
+    } else {
+      if (state.activeStickers.length >= 4) return setStatus('Maksimal <strong>4 stiker</strong>');
+      state.activeStickers.push({ emoji, tx: +tx, ty: +ty });
       btn.classList.add('active');
-      state.layout = btn.dataset.layout;
-      renderSlots();
-      setStatus(`Layout <strong>${state.layout === 'grid' ? 'Grid 2×2' : 'Vertikal'}</strong> dipilih`);
-    });
-  }
+      addLiveSticker(emoji, +tx, +ty);
+    }
+  });
 
-  // Filter
-  if (el.filterRow) {
-    el.filterRow.addEventListener('click', e => {
-      const btn = e.target.closest('[data-filter]');
-      if (!btn) return;
-      el.filterRow.querySelectorAll('.pill').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.activeFilter = btn.dataset.filter;
-      state.filterLabel  = btn.dataset.label;
-      el.video.style.filter = state.activeFilter || 'none';
-      if (el.filterLabel) el.filterLabel.textContent = state.filterLabel.toUpperCase();
-    });
-  }
-
-  // Stiker
-  if (el.stickerRow) {
-    el.stickerRow.addEventListener('click', e => {
-      const btn = e.target.closest('[data-s]');
-      if (!btn) return;
-      const { s: emoji, tx, ty } = btn.dataset;
-      const idx = state.activeStickers.findIndex(s => s.emoji === emoji);
-      if (idx !== -1) {
-        state.activeStickers.splice(idx, 1);
-        btn.classList.remove('active');
-        removeLiveSticker(emoji);
-      } else {
-        if (state.activeStickers.length >= 4) {
-          setStatus('Maksimal <strong>4 stiker</strong>'); return;
-        }
-        state.activeStickers.push({ emoji, tx: +tx, ty: +ty });
-        btn.classList.add('active');
-        addLiveSticker(emoji, +tx, +ty);
-      }
-    });
-  }
-
-  // Warna frame
-  if (el.swatches) {
-    el.swatches.addEventListener('click', e => {
-      const sw = e.target.closest('[data-c]');
-      if (!sw) return;
-      el.swatches.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
-      sw.classList.add('active');
-      state.frameColor = sw.dataset.c;
-      if (el.strip) el.strip.style.background = state.frameColor;
-      if (el.stripFoot) {
-        el.stripFoot.style.background = state.frameColor;
-        const dark = state.frameColor === '#1a1a1a';
-        const brand = el.stripFoot.querySelector('.strip-foot-brand');
-        const date  = el.stripFoot.querySelector('.strip-foot-date');
-        if (brand) brand.style.color = dark ? '#666' : '#aaa';
-        if (date)  date.style.color  = dark ? '#999' : '#555';
-      }
-    });
-  }
+  el.swatches.addEventListener('click', e => {
+    const sw = e.target.closest('[data-c]');
+    if (!sw) return;
+    el.swatches.querySelectorAll('.swatch').forEach(s => s.classList.remove('active'));
+    sw.classList.add('active');
+    state.frameColor = sw.dataset.c;
+    
+    if (el.stripPreviewWrapper) el.stripPreviewWrapper.style.background = state.frameColor;
+    
+    const dark = state.frameColor === '#1a1a1a';
+    el.stripFoot.querySelector('.strip-foot-brand').style.color = dark ? '#666' : '#aaa';
+    el.stripFoot.querySelector('.strip-foot-date').style.color  = dark ? '#999' : '#555';
+  });
 }
 
-/* ============================================================
-   STIKER
-   ============================================================ */
 function addLiveSticker(emoji, tx, ty) {
   const id = 'live-' + encodeURIComponent(emoji);
   if (document.getElementById(id)) return;
   const div = document.createElement('div');
-  div.className = 'live-sticker';
-  div.id        = id;
-  div.textContent = emoji;
-  div.style.left  = tx + '%';
-  div.style.top   = ty + '%';
-  if (el.stickerOvl) el.stickerOvl.appendChild(div);
+  div.className = 'live-sticker'; div.id = id; div.textContent = emoji;
+  div.style.left = tx + '%'; div.style.top = ty + '%';
+  el.stickerOvl.appendChild(div);
 }
-function removeLiveSticker(emoji) {
-  document.getElementById('live-' + encodeURIComponent(emoji))?.remove();
-}
+function removeLiveSticker(emoji) { document.getElementById('live-' + encodeURIComponent(emoji))?.remove(); }
 
 /* ============================================================
    SESI CAPTURE
    ============================================================ */
 async function startSession() {
   if (!state.stream || state.isShooting) return;
-
-  state.isShooting       = true;
-  el.btnCapture.disabled = true;
-  state.captured         = [];
-  if (el.qrSection) el.qrSection.style.display = 'none';
+  state.isShooting = true; el.btnCapture.disabled = true;
+  state.captured = []; el.qrSection.style.display = 'none';
   renderSlots();
 
   for (let i = 0; i < state.totalShots; i++) {
-    setStatus(`Bersiap foto <strong>${i + 1}</strong> dari <strong>${state.totalShots}</strong>...`);
+    setStatus(`Bersiap foto <strong>${i + 1}</strong>...`);
     await runCountdown();
     const dataUrl = captureFrame();
     state.captured.push(dataUrl);
@@ -300,17 +228,14 @@ async function startSession() {
     if (i < state.totalShots - 1) await sleep(850);
   }
 
-  setStatus(`🎉 Semua <strong>${state.totalShots} foto</strong> selesai!`);
-  el.btnCapture.disabled = false;
-  state.isShooting       = false;
-  if (el.btnDl) el.btnDl.classList.add('ready');
+  el.btnCapture.disabled = false; state.isShooting = false;
+  el.btnDl.classList.add('ready');
   await uploadAndGenerateQR();
 }
 
 function runCountdown() {
   return new Promise(resolve => {
-    let n = 3;
-    showCountdown(n);
+    let n = 3; showCountdown(n);
     const iv = setInterval(() => {
       n--;
       if (n > 0) showCountdown(n);
@@ -320,36 +245,25 @@ function runCountdown() {
 }
 
 function showCountdown(n) {
-  el.countdown.textContent = n;
-  el.countdown.classList.remove('on');
-  void el.countdown.offsetWidth;
-  el.countdown.classList.add('on');
+  el.countdown.textContent = n; el.countdown.classList.remove('on');
+  void el.countdown.offsetWidth; el.countdown.classList.add('on');
 }
 
 function captureFrame() {
   const W  = el.video.videoWidth  || 640;
   const H  = el.video.videoHeight || 480;
   const wc = el.workCanvas;
-  wc.width  = W;
-  wc.height = H;
+  wc.width = W; wc.height = H;
   const ctx = wc.getContext('2d');
-
   ctx.save();
-  if (state.zoomLevel === 0.5) {
-    const scale = 0.6;
-    const ox    = (W - W * scale) / 2;
-    const oy    = (H - H * scale) / 2;
-    if (state.facingMode === 'user') { ctx.translate(W, 0); ctx.scale(-1, 1); }
-    ctx.filter = state.activeFilter || 'none';
-    ctx.drawImage(el.video, ox, oy, W * scale, H * scale);
-  } else {
-    if (state.facingMode === 'user') { ctx.translate(W, 0); ctx.scale(-1, 1); }
-    ctx.filter = state.activeFilter || 'none';
-    ctx.drawImage(el.video, 0, 0, W, H);
-  }
+  
+  if (state.facingMode === 'user') { ctx.translate(W, 0); ctx.scale(-1, 1); }
+  
+  ctx.filter = state.activeFilter || 'none';
+  ctx.drawImage(el.video, 0, 0, W, H);
+  
   ctx.restore();
   ctx.filter = 'none';
-
   drawStickersTo(ctx, W, H);
   triggerBlitz();
   return wc.toDataURL('image/jpeg', 0.95);
@@ -357,31 +271,22 @@ function captureFrame() {
 
 function drawStickersTo(ctx, W, H) {
   if (!state.activeStickers.length) return;
-  ctx.font         = `${Math.round(W * 0.12)}px serif`;
-  ctx.textAlign    = 'center';
-  ctx.textBaseline = 'middle';
+  ctx.font = `${Math.round(W * 0.12)}px serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   state.activeStickers.forEach(({ emoji, tx, ty }) => {
     ctx.fillText(emoji, (tx / 100) * W, (ty / 100) * H);
   });
 }
 
 function triggerBlitz() {
-  if (!el.blitz) return;
-  el.blitz.style.transition = 'none';
-  el.blitz.style.opacity    = '0';
-  void el.blitz.offsetWidth;
-  el.blitz.style.transition = 'opacity 0.04s';
-  el.blitz.style.opacity    = '1';
+  const b = el.blitz;
+  b.style.transition = 'none'; b.style.opacity = '0';
+  void b.offsetWidth; b.style.transition = 'opacity 0.04s'; b.style.opacity = '1';
   setTimeout(() => {
-    el.blitz.style.transition = 'opacity 0.08s';
-    el.blitz.style.opacity    = '0.2';
+    b.style.transition = 'opacity 0.08s'; b.style.opacity = '0.2';
     setTimeout(() => {
-      el.blitz.style.transition = 'opacity 0.04s';
-      el.blitz.style.opacity    = '0.9';
-      setTimeout(() => {
-        el.blitz.style.transition = 'opacity 0.35s ease-out';
-        el.blitz.style.opacity    = '0';
-      }, 60);
+      b.style.transition = 'opacity 0.04s'; b.style.opacity = '0.9';
+      setTimeout(() => { b.style.transition = 'opacity 0.35s ease-out'; b.style.opacity = '0'; }, 60);
     }, 80);
   }, 60);
 }
@@ -391,260 +296,172 @@ function triggerBlitz() {
    ============================================================ */
 async function uploadAndGenerateQR() {
   if (!state.captured.length) return;
-  setStatus('⏳ Mengupload foto...');
+  setStatus('⏳ Mengupload foto ke cloud...');
   try {
     const stripCanvas = await buildStripCanvas();
     const base64      = stripCanvas.toDataURL('image/jpeg', 0.92).split(',')[1];
     const formData    = new FormData();
-    formData.append('key',   IMGBB_API_KEY);
-    formData.append('image', base64);
-    formData.append('name',  `snapbooth_${Date.now()}`);
+    formData.append('key', IMGBB_API_KEY); formData.append('image', base64);
+    formData.append('name', `snapbooth_${Date.now()}`);
 
-    const response = await fetch('https://api.imgbb.com/1/upload', {
-      method: 'POST', body: formData,
-    });
+    const response = await fetch('https://api.imgbb.com/1/upload', { method: 'POST', body: formData });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const json = await response.json();
-    if (!json.success) throw new Error(json.error?.message || 'Upload gagal');
+    if (!json.success) throw new Error('Upload gagal');
 
-    const imageUrl   = json.data.url_viewer;
-    state.lastImgUrl = imageUrl;
+    const imageUrl = json.data.url_viewer;
+    await QRCode.toCanvas(el.qrCanvas, imageUrl, { width: 220, margin: 2, color: { dark: '#0d0d0d', light: '#ffffff' } });
 
-    if (el.qrCanvas) {
-      await QRCode.toCanvas(el.qrCanvas, imageUrl, {
-        width: 200, margin: 2,
-        color: { dark: '#0d0d0d', light: '#ffffff' },
-        errorCorrectionLevel: 'M',
-      });
-    }
-    if (el.qrSection) el.qrSection.style.display = 'flex';
-    if (el.qrLink) {
-      el.qrLink.href        = imageUrl;
-      el.qrLink.textContent = 'Buka link foto →';
-    }
-    setStatus('✅ QR siap! Scan kapanpun 📲');
+    el.qrSection.style.display = 'flex';
+    if (el.qrLink) el.qrLink.href = imageUrl;
+    setStatus('✅ QR siap! Link permanen — scan kapanpun 📲');
 
   } catch (err) {
-    console.warn('[ImgBB]', err.message);
     setStatus('⚠️ Cloud gagal, pakai QR lokal...');
     try {
       const stripCanvas = await buildStripCanvas();
-      const blob        = await new Promise(r => stripCanvas.toBlob(r, 'image/jpeg', 0.92));
-      const blobUrl     = URL.createObjectURL(blob);
-      if (el.qrCanvas) {
-        await QRCode.toCanvas(el.qrCanvas, blobUrl, {
-          width: 200, margin: 2,
-          color: { dark: '#0d0d0d', light: '#ffffff' },
-        });
-      }
-      if (el.qrSection) el.qrSection.style.display = 'flex';
-      if (el.qrLink) {
-        el.qrLink.href        = blobUrl;
-        el.qrLink.textContent = 'Buka link foto (lokal) →';
-      }
-      setStatus('📲 QR lokal — jangan tutup tab!');
-    } catch (e) {
-      setStatus('⚠️ Gagal buat QR: ' + e.message);
-    }
+      const blob = await new Promise(r => stripCanvas.toBlob(r, 'image/jpeg', 0.92));
+      const blobUrl = URL.createObjectURL(blob);
+      await QRCode.toCanvas(el.qrCanvas, blobUrl, { width: 220, margin: 2, color: { dark: '#0d0d0d', light: '#ffffff' } });
+      el.qrSection.style.display = 'flex';
+      if (el.qrLink) el.qrLink.href = blobUrl;
+      setStatus('📲 QR lokal dibuat (jangan tutup browser!)');
+    } catch (e) {}
   }
 }
 
 /* ============================================================
-   BUILD STRIP CANVAS
+   BUILD STRIP CANVAS (FILE DOWNLOAD YANG DIPERBAIKI)
    ============================================================ */
 async function buildStripCanvas() {
-  if (state.layout === 'grid' && state.captured.length === 4) {
-    return await buildGridCanvas();
-  }
+  if (state.layout === 'grid' && state.captured.length === 4) return await buildGridCanvas();
   return await buildVerticalCanvas();
 }
 
-// ── Grid 2×2 ──
+// ── BINGKAI GRID 2X2 ──
 async function buildGridCanvas() {
-  const W      = 900;
-  const H      = 1100;
-  const PAD    = 32;
-  const GAP    = 10;
+  const SLOT_W = 300; 
+  const SLOT_H = 400; 
+  const PAD    = 45;  // 🔴 MARGIN LUAR DIPERTEBAL (AGAR HP TIDAK NGEZOOM)
+  const GAP    = 18;  
   const LOGO_H = 100;
-  const FOOT_H = 60;
-  const SLOT_W = Math.floor((W - PAD * 2 - GAP) / 2);
-  const SLOT_H = Math.floor((H - PAD * 2 - LOGO_H - FOOT_H - GAP) / 2);
+  const FOOT_H = 70;
+  
+  const TW = PAD + (SLOT_W + GAP) * 2 - GAP + PAD;
+  const TH = LOGO_H + PAD + (SLOT_H + GAP) * 2 - GAP + PAD + FOOT_H;
 
-  const c  = document.createElement('canvas');
-  c.width  = W; c.height = H;
-  const dc = c.getContext('2d');
+  const c = document.createElement('canvas');
+  c.width = TW; c.height = TH; const dc = c.getContext('2d');
 
-  dc.fillStyle = state.frameColor;
-  dc.fillRect(0, 0, W, H);
+  dc.fillStyle = state.frameColor; dc.fillRect(0, 0, TW, TH);
 
-  const isDark    = state.frameColor === '#1a1a1a';
-  const textColor = isDark ? '#ffffff' : '#000000';
-
-  dc.shadowColor   = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.15)';
-  dc.shadowBlur    = 4;
-  dc.shadowOffsetY = 2;
-  dc.textAlign     = 'center';
-  dc.textBaseline  = 'middle';
-  dc.fillStyle     = textColor;
-  dc.font          = 'bold 44px sans-serif';
-  dc.fillText('✦ SNAPBOOTH ✦', W / 2, PAD + LOGO_H / 2);
-  dc.shadowColor = 'transparent'; dc.shadowBlur = 0; dc.shadowOffsetY = 0;
+  const isDark = state.frameColor === '#1a1a1a';
+  dc.textAlign = 'center'; dc.textBaseline = 'middle';
+  dc.fillStyle = isDark ? '#ffffff' : '#000000';
+  dc.font = 'bold 40px sans-serif';
+  dc.fillText('✦ SNAPBOOTH ✦', TW / 2, LOGO_H / 2 + 10);
 
   for (let i = 0; i < 4; i++) {
-    const col = i % 2;
-    const row = Math.floor(i / 2);
-    const x   = PAD + col * (SLOT_W + GAP);
-    const y   = PAD + LOGO_H + row * (SLOT_H + GAP);
+    const col = i % 2; const row = Math.floor(i / 2);
+    const x = PAD + col * (SLOT_W + GAP);
+    const y = LOGO_H + PAD + row * (SLOT_H + GAP);
 
-    dc.fillStyle = '#ffffff';
-    roundRect(dc, x - 6, y - 6, SLOT_W + 12, SLOT_H + 12, 6);
-    dc.fill();
+    dc.fillStyle = '#ffffff'; dc.fillRect(x - 6, y - 6, SLOT_W + 12, SLOT_H + 12);
 
-    const img       = await loadImage(state.captured[i]);
-    const imgRatio  = img.width / img.height;
-    const slotRatio = SLOT_W / SLOT_H;
-    let sx = 0, sy = 0, sw = img.width, sh = img.height;
-    if (imgRatio > slotRatio) { sw = img.height * slotRatio; sx = (img.width - sw) / 2; }
-    else                      { sh = img.width / slotRatio;  sy = (img.height - sh) / 2; }
-
-    dc.save();
-    dc.imageSmoothingEnabled = true;
-    dc.imageSmoothingQuality = 'high';
-    roundRect(dc, x, y, SLOT_W, SLOT_H, 3);
-    dc.clip();
-    dc.drawImage(img, sx, sy, sw, sh, x, y, SLOT_W, SLOT_H);
-    dc.restore();
-
-    dc.save();
-    dc.globalAlpha = 0.25; dc.fillStyle = '#fff';
-    dc.font = 'bold 13px sans-serif';
-    dc.textAlign = 'right'; dc.textBaseline = 'bottom';
-    dc.fillText('snapbooth.app', x + SLOT_W - 8, y + SLOT_H - 7);
-    dc.restore();
-  }
-
-  dc.textAlign = 'center'; dc.textBaseline = 'middle';
-  dc.font      = 'bold 18px sans-serif';
-  dc.fillStyle = isDark ? '#888' : 'rgba(0,0,0,0.4)';
-  dc.fillText(getTodayString(), W / 2, H - PAD - FOOT_H / 2);
-  return c;
-}
-
-// ── Vertikal 50×150mm @ 300dpi ──
-async function buildVerticalCanvas() {
-  const DPI    = 300;
-  const MM_PX  = DPI / 25.4;
-  const W      = Math.round(50  * MM_PX);
-  const H      = Math.round(150 * MM_PX);
-  const PAD_X  = Math.round(3   * MM_PX);
-  const PAD_Y  = Math.round(3   * MM_PX);
-  const GAP    = Math.round(1.5 * MM_PX);
-  const FOOT_H = Math.round(10  * MM_PX);
-  const count  = state.captured.length;
-  const slotW  = W - PAD_X * 2;
-  const slotH  = Math.floor((H - PAD_Y * 2 - FOOT_H - GAP * (count - 1)) / count);
-
-  const c  = document.createElement('canvas');
-  c.width  = W; c.height = H;
-  const dc = c.getContext('2d');
-
-  dc.fillStyle = state.frameColor;
-  dc.fillRect(0, 0, W, H);
-
-  for (let i = 0; i < count; i++) {
     const img = await loadImage(state.captured[i]);
-    const x   = PAD_X;
-    const y   = PAD_Y + i * (slotH + GAP);
+    const cropW = img.width; const cropH = img.width * (SLOT_H / SLOT_W);
+    const cropX = 0; const cropY = (img.height - cropH) / 2;
+    dc.drawImage(img, cropX, cropY, cropW, cropH, x, y, SLOT_W, SLOT_H);
 
-    dc.fillStyle = '#ffffff';
-    dc.fillRect(x - 2, y - 2, slotW + 4, slotH + 4);
-
-    const imgRatio  = img.width / img.height;
-    const slotRatio = slotW / slotH;
-    let sx = 0, sy = 0, sw = img.width, sh = img.height;
-    if (imgRatio > slotRatio) { sw = img.height * slotRatio; sx = (img.width - sw) / 2; }
-    else                      { sh = img.width / slotRatio;  sy = (img.height - sh) / 2; }
-
-    dc.save();
-    roundRect(dc, x, y, slotW, slotH, 4);
-    dc.clip();
-    dc.imageSmoothingEnabled = true;
-    dc.imageSmoothingQuality = 'high';
-    dc.drawImage(img, sx, sy, sw, sh, x, y, slotW, slotH);
-    dc.restore();
-
-    dc.save();
-    dc.globalAlpha = 0.22; dc.fillStyle = '#fff';
-    dc.font = `bold ${Math.round(3.5 * MM_PX)}px sans-serif`;
+    dc.save(); dc.globalAlpha = 0.25; dc.fillStyle = '#fff'; dc.font = 'bold 12px sans-serif';
     dc.textAlign = 'right'; dc.textBaseline = 'bottom';
-    dc.fillText('snapbooth.app', x + slotW - Math.round(2*MM_PX), y + slotH - Math.round(2*MM_PX));
-    dc.restore();
+    dc.fillText('snapbooth.app', x + SLOT_W - 8, y + SLOT_H - 8); dc.restore();
   }
 
-  const isDark   = state.frameColor === '#1a1a1a';
-  const footY    = H - FOOT_H;
-  dc.textAlign    = 'center'; dc.textBaseline = 'middle';
-  dc.font         = `600 ${Math.round(3.2 * MM_PX)}px sans-serif`;
-  dc.fillStyle    = isDark ? '#888' : 'rgba(0,0,0,0.45)';
-  dc.fillText('✦ SNAPBOOTH ✦', W / 2, footY + FOOT_H * 0.32);
-  dc.font         = `bold ${Math.round(3 * MM_PX)}px sans-serif`;
-  dc.fillStyle    = isDark ? '#aaa' : 'rgba(0,0,0,0.55)';
-  dc.fillText(getTodayString(), W / 2, footY + FOOT_H * 0.72);
+  dc.textAlign = 'center'; dc.textBaseline = 'middle'; dc.font = 'bold 18px sans-serif';
+  dc.fillStyle = isDark ? '#888' : 'rgba(0,0,0,0.45)';
+  dc.fillText(getTodayString(), TW / 2, TH - FOOT_H / 2);
+
   return c;
 }
 
-// Helper rounded rect
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y,     x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h,     x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y,         x + r, y);
-  ctx.closePath();
+// ── BINGKAI VERTIKAL ──
+async function buildVerticalCanvas() {
+  const SW  = 360; // Lebar foto diperkecil
+  const SH  = 480; // Tinggi potret
+  const PAD = 45;  // 🔴 MARGIN KIRI KANAN DIPERTEBAL (AGAR HP TIDAK NGEZOOM)
+  const GAP = 18;  // Jarak antar foto
+  const FH  = 85;  
+  const TW  = SW + PAD * 2;
+  const TH  = PAD + (SH + GAP) * state.captured.length - GAP + PAD + FH;
+
+  const c = document.createElement('canvas');
+  c.width = TW; c.height = TH; const dc = c.getContext('2d');
+
+  dc.fillStyle = state.frameColor; dc.fillRect(0, 0, TW, TH);
+
+  for (let i = 0; i < state.captured.length; i++) {
+    const img = await loadImage(state.captured[i]);
+    const y   = PAD + i * (SH + GAP);
+
+    // Outline tipis dalam foto
+    dc.fillStyle = '#ffffff'; dc.fillRect(PAD - 6, y - 6, SW + 12, SH + 12);
+
+    const cropW = img.width; const cropH = img.width * (SH / SW);
+    const cropX = 0; const cropY = (img.height - cropH) / 2;
+    dc.drawImage(img, cropX, cropY, cropW, cropH, PAD, y, SW, SH);
+
+    dc.save(); dc.globalAlpha = 0.25; dc.fillStyle = '#fff'; dc.font = 'bold 12px sans-serif';
+    dc.textAlign = 'right'; dc.textBaseline = 'bottom';
+    dc.fillText('snapbooth.app', PAD + SW - 8, y + SH - 8); dc.restore();
+  }
+
+  const isDark = state.frameColor === '#1a1a1a';
+  dc.textAlign = 'center'; dc.textBaseline = 'middle'; dc.font = '600 14px sans-serif';
+  dc.fillStyle = isDark ? '#777' : 'rgba(0,0,0,0.4)';
+  dc.fillText('✦ SNAPBOOTH ✦', TW / 2, TH - FH + 30);
+  dc.font = 'bold 13px sans-serif'; dc.fillStyle = isDark ? '#999' : 'rgba(0,0,0,0.5)';
+  dc.fillText(getTodayString(), TW / 2, TH - FH + 54);
+
+  return c;
 }
 
 /* ============================================================
-   RENDER STRIP (preview UI)
+   RENDER PREVIEW UI
    ============================================================ */
 function renderSlots() {
   if (!el.strip) return;
-
   el.strip.innerHTML = '';
-  el.strip.style.background = state.frameColor;
+  
+  if (el.stripPreviewWrapper) el.stripPreviewWrapper.style.background = state.frameColor;
+  el.strip.removeAttribute('style');
 
   const isGrid = state.layout === 'grid' && state.totalShots === 4;
-  el.strip.className = isGrid ? 'photo-strip layout-grid' : 'photo-strip layout-vertical';
+  if (isGrid) {
+    el.stripPreviewWrapper.className = 'strip-preview-wrapper layout-grid';
+    el.strip.style.display = 'grid'; el.strip.style.gridTemplateColumns = '1fr 1fr';
+  } else {
+    el.stripPreviewWrapper.className = 'strip-preview-wrapper layout-vertical';
+    el.strip.style.display = 'flex'; el.strip.style.flexDirection = 'column';
+  }
 
   for (let i = 0; i < state.totalShots; i++) {
-    const slot     = document.createElement('div');
-    slot.className = 'strip-slot';
-    slot.id        = `slot-${i}`;
+    const slot = document.createElement('div');
+    slot.className = 'strip-slot'; slot.id = `slot-${i}`;
     slot.innerHTML = `<span class="empty">FOTO ${i + 1}</span>`;
     el.strip.appendChild(slot);
   }
-
-  updateDots();
-  if (el.btnDl) el.btnDl.classList.remove('ready');
+  updateDots(); if (el.btnDl) el.btnDl.classList.remove('ready');
 }
 
 function fillSlot(i, dataUrl) {
-  const slot = document.getElementById(`slot-${i}`);
-  if (!slot) return;
-  slot.innerHTML = '';
-  const img  = document.createElement('img');
-  img.src    = dataUrl;
-  img.alt    = `Foto ${i + 1}`;
-  slot.appendChild(img);
+  const slot = document.getElementById(`slot-${i}`); if (!slot) return;
+  slot.innerHTML = ''; const img = document.createElement('img');
+  img.src = dataUrl; slot.appendChild(img);
 }
 
 function updateDots() {
-  if (!el.shotDots) return;
-  el.shotDots.innerHTML = '';
+  if (!el.shotDots) return; el.shotDots.innerHTML = '';
   for (let i = 0; i < state.totalShots; i++) {
     const d = document.createElement('div');
     d.className = 'dot' + (i < state.captured.length ? ' done' : '');
@@ -652,57 +469,30 @@ function updateDots() {
   }
 }
 
-/* ============================================================
-   DOWNLOAD
-   ============================================================ */
 async function downloadStrip() {
   if (!state.captured.length) return;
-  setStatus('⏳ Menyiapkan file HD...');
+  setStatus('⏳ Menyiapkan file...');
   try {
-    const dlc  = await buildStripCanvas();
-    const a    = document.createElement('a');
-    a.href     = dlc.toDataURL('image/jpeg', 1.0);
-    a.download = `snapbooth_${Date.now()}.jpg`;
-    a.click();
-    setStatus('✅ Strip HD siap didownload!');
-  } catch (err) {
-    setStatus('⚠️ Gagal download: ' + err.message);
-  }
+    const dlc = await buildStripCanvas(); const a = document.createElement('a');
+    a.href = dlc.toDataURL('image/jpeg', 0.93); a.download = `snapbooth_${Date.now()}.jpg`;
+    a.click(); setStatus('✅ Strip berhasil didownload!');
+  } catch (err) { setStatus('⚠️ Gagal download: ' + err.message); }
 }
 
-/* ============================================================
-   RESET
-   ============================================================ */
 function resetAll() {
   if (state.isShooting) return;
-  state.captured       = [];
-  state.activeStickers = [];
-  if (el.stickerOvl)  el.stickerOvl.innerHTML = '';
-  if (el.stickerRow)  el.stickerRow.querySelectorAll('.stk-btn').forEach(b => b.classList.remove('active'));
-  if (el.qrSection)   el.qrSection.style.display = 'none';
-  renderSlots();
+  state.captured = []; state.activeStickers = [];
+  if (el.stickerOvl) el.stickerOvl.innerHTML = '';
+  el.stickerRow?.querySelectorAll('.stk-btn').forEach(b => b.classList.remove('active'));
+  el.qrSection.style.display = 'none'; renderSlots();
   if (el.btnDl) el.btnDl.classList.remove('ready');
   setStatus('Reset — siap ambil foto baru');
 }
 
-/* ============================================================
-   HELPERS
-   ============================================================ */
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
 function loadImage(src) {
-  return new Promise((resolve, reject) => {
-    const img   = new Image();
-    img.onload  = () => resolve(img);
-    img.onerror = () => reject(new Error('Gagal memuat gambar'));
-    img.src     = src;
-  });
+  return new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = src; });
 }
-
 function setStatus(html) { if (el.status) el.status.innerHTML = html; }
-function setStripDate()  { if (el.stripDate) el.stripDate.textContent = getTodayString(); }
-function getTodayString() {
-  return new Date().toLocaleDateString('id-ID', {
-    day: '2-digit', month: 'short', year: 'numeric',
-  });
-}
+function setStripDate()  { if (el.stripDate) el.stripDate.textContent = new Date().toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'}); }
+function getTodayString() { return new Date().toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'}); }
