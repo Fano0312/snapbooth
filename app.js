@@ -1,13 +1,11 @@
 /**
  * app.js — SnapBooth FINAL
- * Fitur: Filter, Stiker, Deep Scan Camera 0.5x, BINGKAI TEBAL, 
- * + ImgBB upload + QR 
- * + SEND TO EMAIL (EmailJS)
+ * Fitur: Upload ImgBB + Tombol Manual Kirim Email (EmailJS)
  */
 
 const IMGBB_API_KEY = '6947b43c605be95646f5101da2a2ede4';
 
-// 🛑 KONFIGURASI EMAILJS ANDA (SUDAH AKTIF)
+// 🛑 KONFIGURASI EMAILJS (Sudah Aktif)
 const EMAILJS_SERVICE_ID  = 'service_87pejoa'; 
 const EMAILJS_TEMPLATE_ID = 'template_nhhqm4z';
 const EMAILJS_PUBLIC_KEY  = '255XRSfdjkDg_uJdP';
@@ -23,16 +21,14 @@ const state = {
   frameColor:     '#ffffff',
   facingMode:     'user',
   zoomLevel:      1,
-  layout:         'vertical'
+  layout:         'vertical',
+  currentImageUrl: null // 🌟 Variabel untuk menyimpan URL foto
 };
 
 let el = {};
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Inisialisasi EmailJS 
-  if(EMAILJS_PUBLIC_KEY !== 'YOUR_PUBLIC_KEY_HERE') {
-    emailjs.init(EMAILJS_PUBLIC_KEY);
-  }
+  emailjs.init(EMAILJS_PUBLIC_KEY);
 
   el = {
     video:       document.getElementById('video'),
@@ -51,6 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
     stripDate:   document.getElementById('strip-date'),
     btnCapture:  document.getElementById('btn-capture'),
     btnDl:       document.getElementById('btn-dl'),
+    btnEmail:    document.getElementById('btn-email'), // 🌟 Inisialisasi Tombol Email
     shotRow:     document.getElementById('shot-row'),
     filterRow:   document.getElementById('filter-row'),
     layoutRow:   document.getElementById('layout-row'),
@@ -68,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ============================================================
-   KAMERA (Deep Scan Ultra-Wide)
+   KAMERA 
    ============================================================ */
 async function startCamera() {
   setStatus('⏳ Meminta izin & memindai lensa...');
@@ -207,6 +204,13 @@ async function startSession() {
   if (!state.stream || state.isShooting) return;
   state.isShooting = true; el.btnCapture.disabled = true;
   state.captured = []; el.qrSection.style.display = 'none';
+  
+  if (el.btnEmail) {
+    el.btnEmail.style.display = 'none'; 
+    el.btnEmail.disabled = false;
+    el.btnEmail.innerHTML = '📧 KIRIM KE jasbona18@gmail.com';
+  }
+
   renderSlots();
 
   for (let i = 0; i < state.totalShots; i++) {
@@ -257,11 +261,11 @@ function captureFrame() {
 }
 
 /* ============================================================
-   IMGBB + EMAILJS + QR
+   IMGBB + TAMPILKAN TOMBOL EMAIL
    ============================================================ */
 async function uploadAndGenerateQR() {
   if (!state.captured.length) return;
-  setStatus('⏳ Mengupload & Menyiapkan Foto...');
+  setStatus('⏳ Mengupload Foto (Harap Tunggu)...');
   try {
     const stripCanvas = await buildStripCanvas();
     const base64 = stripCanvas.toDataURL('image/jpeg', 0.92).split(',')[1];
@@ -272,11 +276,17 @@ async function uploadAndGenerateQR() {
     if (!json.success) throw new Error('Upload gagal');
 
     const imageUrl = json.data.url_viewer;
+    state.currentImageUrl = imageUrl; // Simpan URL
+    
+    // TAMPILKAN TOMBOL EMAIL
+    if (el.btnEmail) {
+      el.btnEmail.style.display = 'block';
+    }
+
     await QRCode.toCanvas(el.qrCanvas, imageUrl, { width: 220, margin: 2, color: { dark: '#0d0d0d', light: '#ffffff' } });
     el.qrSection.style.display = 'flex'; if (el.qrLink) el.qrLink.href = imageUrl;
     
-    // 📩 TRIGGER PENGIRIMAN EMAIL
-    sendPhotoToEmail(imageUrl);
+    setStatus('✅ Foto siap! Klik "Kirim ke jasbona18@gmail.com" untuk mencetak.');
 
   } catch (err) {
     setStatus('⚠️ Cloud gagal, pakai QR lokal...');
@@ -289,25 +299,29 @@ async function uploadAndGenerateQR() {
   }
 }
 
-// FUNGSI BARU: MENGIRIM EMAIL
-function sendPhotoToEmail(photoUrl) {
-  if(EMAILJS_PUBLIC_KEY === 'YOUR_PUBLIC_KEY_HERE') {
-    setStatus('✅ QR Siap! (Email belum disetting)');
-    return;
-  }
+/* ============================================================
+   FUNGSI TOMBOL KIRIM EMAIL MANUAL
+   ============================================================ */
+function sendToAdminManual() {
+  if (!state.currentImageUrl) return;
 
-  setStatus('⏳ Mengirim foto ke printer admin...');
-  
+  el.btnEmail.disabled = true;
+  el.btnEmail.innerHTML = '⏳ MENGIRIM...';
+  setStatus('⏳ Mengirim foto ke jasbona18@gmail.com...');
+
   const templateParams = {
-    photo_link: photoUrl,
+    photo_link: state.currentImageUrl,
     waktu: new Date().toLocaleString('id-ID')
   };
 
   emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams)
     .then(function(response) {
        setStatus('✅ Sukses! Foto telah dikirim ke Admin untuk dicetak 🖨️');
+       el.btnEmail.innerHTML = '✅ TERKIRIM KE EMAIL';
     }, function(error) {
-       setStatus('⚠️ Foto berhasil diupload, tapi gagal mengirim ke email admin.');
+       setStatus('⚠️ Gagal mengirim email. Silakan coba klik lagi.');
+       el.btnEmail.disabled = false;
+       el.btnEmail.innerHTML = '📧 COBA KIRIM LAGI';
        console.log('FAILED...', error);
     });
 }
@@ -364,7 +378,26 @@ function renderSlots() {
 function fillSlot(i, dataUrl) { const slot = document.getElementById(`slot-${i}`); if (slot) { slot.innerHTML = ''; const img = document.createElement('img'); img.src = dataUrl; slot.appendChild(img); } }
 function updateDots() { if (!el.shotDots) return; el.shotDots.innerHTML = ''; for (let i = 0; i < state.totalShots; i++) { const d = document.createElement('div'); d.className = 'dot' + (i < state.captured.length ? ' done' : ''); el.shotDots.appendChild(d); } }
 async function downloadStrip() { if (!state.captured.length) return; setStatus('⏳ Menyiapkan file...'); try { const dlc = await buildStripCanvas(); const a = document.createElement('a'); a.href = dlc.toDataURL('image/jpeg', 0.93); a.download = `snapbooth_${Date.now()}.jpg`; a.click(); setStatus('✅ Strip berhasil didownload!'); } catch (err) { setStatus('⚠️ Gagal download.'); } }
-function resetAll() { if (state.isShooting) return; state.captured = []; state.activeStickers = []; if (el.stickerOvl) el.stickerOvl.innerHTML = ''; el.stickerRow?.querySelectorAll('.stk-btn').forEach(b => b.classList.remove('active')); el.qrSection.style.display = 'none'; renderSlots(); if (el.btnDl) el.btnDl.classList.remove('ready'); setStatus('Reset — siap ambil foto baru'); }
+
+function resetAll() { 
+  if (state.isShooting) return; 
+  state.captured = []; 
+  state.activeStickers = []; 
+  if (el.stickerOvl) el.stickerOvl.innerHTML = ''; 
+  el.stickerRow?.querySelectorAll('.stk-btn').forEach(b => b.classList.remove('active')); 
+  el.qrSection.style.display = 'none'; 
+  
+  if (el.btnEmail) { 
+    el.btnEmail.style.display = 'none'; 
+    el.btnEmail.disabled = false;
+    el.btnEmail.innerHTML = '📧 KIRIM KE jasbona18@gmail.com'; 
+  }
+
+  renderSlots(); 
+  if (el.btnDl) el.btnDl.classList.remove('ready'); 
+  setStatus('Reset — siap ambil foto baru'); 
+}
+
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function loadImage(src) { return new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = src; }); }
 function setStatus(html) { if (el.status) el.status.innerHTML = html; }
