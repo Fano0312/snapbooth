@@ -5,8 +5,8 @@
 
 const IMGBB_API_KEY = '6947b43c605be95646f5101da2a2ede4';
 
-// 🛑 KONFIGURASI EMAILJS (Sudah Aktif)
-const EMAILJS_SERVICE_ID  = 'service_87pejoa'; 
+// 🛑 KONFIGURASI EMAILJS 
+const EMAILJS_SERVICE_ID  = 'service_9wazu13'; 
 const EMAILJS_TEMPLATE_ID = 'template_nhhqm4z';
 const EMAILJS_PUBLIC_KEY  = '255XRSfdjkDg_uJdP';
 
