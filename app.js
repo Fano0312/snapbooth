@@ -1,5 +1,5 @@
 /**
- * app.js — SnapBooth FINAL
+ * app.js — SnapBooth FINAL (Full Integrated)
  * Fitur: Upload ImgBB + Tombol Manual Kirim Email (EmailJS)
  */
 
@@ -22,7 +22,7 @@ const state = {
   facingMode:     'user',
   zoomLevel:      1,
   layout:         'vertical',
-  currentImageUrl: null // 🌟 Variabel untuk menyimpan URL foto
+  currentImageUrl: null 
 };
 
 let el = {};
@@ -47,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
     stripDate:   document.getElementById('strip-date'),
     btnCapture:  document.getElementById('btn-capture'),
     btnDl:       document.getElementById('btn-dl'),
-    btnEmail:    document.getElementById('btn-email'), // 🌟 Inisialisasi Tombol Email
+    btnEmail:    document.getElementById('btn-email'), 
     shotRow:     document.getElementById('shot-row'),
     filterRow:   document.getElementById('filter-row'),
     layoutRow:   document.getElementById('layout-row'),
@@ -127,15 +127,18 @@ async function tryNativeZoom() {
   } catch (_) {}
 }
 
-function switchCamera(btn) {
-  document.querySelectorAll('[data-cam]').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  state.facingMode = btn.dataset.cam;
-  state.zoomLevel  = parseFloat(btn.dataset.zoom);
-  startCamera();
-}
-
 function registerEvents() {
+  // Event: Tombol Ambil Foto
+  el.btnCapture.addEventListener('click', () => startSession());
+
+  // Event: Tombol Download
+  el.btnDl.addEventListener('click', () => downloadStrip());
+
+  // Event: TOMBOL EMAIL (MANUAL)
+  if (el.btnEmail) {
+    el.btnEmail.addEventListener('click', () => sendToAdminManual());
+  }
+
   el.shotRow.addEventListener('click', e => {
     const btn = e.target.closest('[data-shots]');
     if (!btn || state.isShooting) return;
@@ -275,10 +278,9 @@ async function uploadAndGenerateQR() {
     const json = await res.json();
     if (!json.success) throw new Error('Upload gagal');
 
-    const imageUrl = json.data.url_viewer;
-    state.currentImageUrl = imageUrl; // Simpan URL
+    const imageUrl = json.data.url; 
+    state.currentImageUrl = imageUrl;
     
-    // TAMPILKAN TOMBOL EMAIL
     if (el.btnEmail) {
       el.btnEmail.style.display = 'block';
     }
@@ -357,49 +359,4 @@ async function buildVerticalCanvas() {
     const img = await loadImage(state.captured[i]), y = PAD + i * (SH + GAP);
     dc.fillStyle = '#ffffff'; dc.fillRect(PAD - 6, y - 6, SW + 12, SH + 12);
     const cropW = img.width, cropH = img.width * (SH / SW), cropX = 0, cropY = (img.height - cropH) / 2;
-    dc.drawImage(img, cropX, cropY, cropW, cropH, PAD, y, SW, SH);
-  }
-  const isDark = state.frameColor === '#1a1a1a';
-  dc.textAlign = 'center'; dc.textBaseline = 'middle'; dc.font = '600 14px sans-serif'; dc.fillStyle = isDark ? '#777' : 'rgba(0,0,0,0.4)'; dc.fillText('✦ SNAPBOOTH ✦', TW / 2, TH - FH + 30);
-  dc.font = 'bold 13px sans-serif'; dc.fillStyle = isDark ? '#999' : 'rgba(0,0,0,0.5)'; dc.fillText(getTodayString(), TW / 2, TH - FH + 54);
-  return c;
-}
-
-function renderSlots() {
-  if (!el.strip) return; el.strip.innerHTML = '';
-  if (el.stripPreviewWrapper) el.stripPreviewWrapper.style.background = state.frameColor;
-  el.strip.removeAttribute('style');
-  if (state.layout === 'grid' && state.totalShots === 4) { el.stripPreviewWrapper.className = 'strip-preview-wrapper layout-grid'; el.strip.style.display = 'grid'; el.strip.style.gridTemplateColumns = '1fr 1fr'; } 
-  else { el.stripPreviewWrapper.className = 'strip-preview-wrapper layout-vertical'; el.strip.style.display = 'flex'; el.strip.style.flexDirection = 'column'; }
-  for (let i = 0; i < state.totalShots; i++) { const slot = document.createElement('div'); slot.className = 'strip-slot'; slot.id = `slot-${i}`; slot.innerHTML = `<span class="empty">FOTO ${i + 1}</span>`; el.strip.appendChild(slot); }
-  updateDots(); if (el.btnDl) el.btnDl.classList.remove('ready');
-}
-
-function fillSlot(i, dataUrl) { const slot = document.getElementById(`slot-${i}`); if (slot) { slot.innerHTML = ''; const img = document.createElement('img'); img.src = dataUrl; slot.appendChild(img); } }
-function updateDots() { if (!el.shotDots) return; el.shotDots.innerHTML = ''; for (let i = 0; i < state.totalShots; i++) { const d = document.createElement('div'); d.className = 'dot' + (i < state.captured.length ? ' done' : ''); el.shotDots.appendChild(d); } }
-async function downloadStrip() { if (!state.captured.length) return; setStatus('⏳ Menyiapkan file...'); try { const dlc = await buildStripCanvas(); const a = document.createElement('a'); a.href = dlc.toDataURL('image/jpeg', 0.93); a.download = `snapbooth_${Date.now()}.jpg`; a.click(); setStatus('✅ Strip berhasil didownload!'); } catch (err) { setStatus('⚠️ Gagal download.'); } }
-
-function resetAll() { 
-  if (state.isShooting) return; 
-  state.captured = []; 
-  state.activeStickers = []; 
-  if (el.stickerOvl) el.stickerOvl.innerHTML = ''; 
-  el.stickerRow?.querySelectorAll('.stk-btn').forEach(b => b.classList.remove('active')); 
-  el.qrSection.style.display = 'none'; 
-  
-  if (el.btnEmail) { 
-    el.btnEmail.style.display = 'none'; 
-    el.btnEmail.disabled = false;
-    el.btnEmail.innerHTML = '📧 KIRIM KE jasbona18@gmail.com'; 
-  }
-
-  renderSlots(); 
-  if (el.btnDl) el.btnDl.classList.remove('ready'); 
-  setStatus('Reset — siap ambil foto baru'); 
-}
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-function loadImage(src) { return new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = src; }); }
-function setStatus(html) { if (el.status) el.status.innerHTML = html; }
-function setStripDate() { if (el.stripDate) el.stripDate.textContent = getTodayString(); }
-function getTodayString() { return new Date().toLocaleDateString('id-ID', {day: '2-digit', month: 'short', year: 'numeric'}); }
+    dc.drawImage(img, cropX, cropY, cropW
